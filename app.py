@@ -70,6 +70,22 @@ def simpan_ke_hostinger(foto, jumlah_daun, status):
         timeout=30
     )
 
+
+    print(
+        "HOSTINGER STATUS:",
+        response.status_code,
+        flush=True
+    )
+
+    print(
+        "HOSTINGER RESPONSE:",
+        response.text[:500],
+        flush=True
+    )
+
+    response.raise_for_status()
+
+    
     response.raise_for_status()
 
     hasil = response.json()
