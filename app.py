@@ -132,21 +132,32 @@ async def predict(request: Request):
         if len(plants) > 0:
             tanaman = plants[0]
 
-            # Pastikan foto dikirim sebagai JPEG
-            berhasil, jpeg = cv2.imencode(
-                ".jpg",
-                image,
-                [cv2.IMWRITE_JPEG_QUALITY, 85]
-            )
 
-            if not berhasil:
-                raise RuntimeError("Gagal membuat JPEG")
+            # Gunakan JPEG asli jika input berupa JPEG
+            content_type = request.headers.get(
+                "content-type", ""
+            ).split(";")[0].strip().lower()
+
+            if content_type == "image/jpeg":
+                foto_jpeg = data
+            else:
+                berhasil, jpeg = cv2.imencode(
+                    ".jpg",
+                    image,
+                    [cv2.IMWRITE_JPEG_QUALITY, 85]
+                )
+
+                if not berhasil:
+                    raise RuntimeError("Gagal membuat JPEG")
+
+                foto_jpeg = jpeg.tobytes()
 
             penyimpanan = simpan_ke_hostinger(
-                jpeg.tobytes(),
+                foto_jpeg,
                 tanaman["jumlah_daun"],
                 tanaman["status"]
             )
+
 
         return {
             "jumlah_tanaman_terdeteksi": len(plants),
