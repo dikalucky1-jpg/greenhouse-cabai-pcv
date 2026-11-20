@@ -1,5 +1,6 @@
 """API dua model YOLO untuk greenhouse cabai, diadaptasi dari DuaModel.ipynb."""
 import os
+import requests
 from functools import lru_cache
 
 import cv2
@@ -15,6 +16,13 @@ IMAGE_SIZE = 640
 CROP_MARGIN = 0.10
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
+
+HOSTINGER_URL = os.getenv(
+    "HOSTINGER_URL",
+    "https://smartgreenhouse.pbltifnganjuk.com/api/simpan_deteksi.php"
+)
+
+HOSTINGER_API_TOKEN = os.getenv("HOSTINGER_API_TOKEN", "")
 
 def readiness_status(n_leaves: int) -> str:
     # Kriteria operasional awal dari notebook; bukan diagnosis agronomis.
@@ -39,6 +47,37 @@ def load_models():
 @app.get("/")
 def home():
     return {"service": "greenhouse-cabai-pcv", "status": "online", "endpoint": "POST /predict"}
+
+
+def simpan_ke_hostinger(foto, jumlah_daun, status):
+    if not HOSTINGER_API_TOKEN:
+        raise RuntimeError(
+            "HOSTINGER_API_TOKEN belum dikonfigurasi"
+        )
+
+    response = requests.post(
+        HOSTINGER_URL,
+        headers={
+            "X-API-Key": HOSTINGER_API_TOKEN
+        },
+        files={
+            "foto": ("cabai.jpg", foto, "image/jpeg")
+        },
+        data={
+            "jumlah_daun": str(jumlah_daun),
+            "status": status
+        },
+        timeout=30
+    )
+
+    response.raise_for_status()
+
+    hasil = response.json()
+
+    if not hasil.get("success"):
+        raise RuntimeError("Hostinger gagal menyimpan data")
+
+    return hasil
 
 
 @app.post("/predict")
@@ -83,7 +122,48 @@ async def predict(request: Request):
                     "status": readiness_status(count),
                     "box_xyxy": [x1, y1, x2, y2]
                 })
-        return {"jumlah_tanaman_terdeteksi": len(plants), "tanaman": plants}
+        
+        # Simpan hasil untuk satu tanaman per foto
+        penyimpanan = {
+            "success": False,
+            "message": "Tanaman tidak terdeteksi"
+        }
+
+        if len(plants) > 0:
+            tanaman = plants[0]
+
+            # Pastikan foto dikirim sebagai JPEG
+            berhasil, jpeg = cv2.imencode(
+                ".jpg",
+                image,
+                [cv2.IMWRITE_JPEG_QUALITY, 85]
+            )
+
+            if not berhasil:
+                raise RuntimeError("Gagal membuat JPEG")
+
+            penyimpanan = simpan_ke_hostinger(
+                jpeg.tobytes(),
+                tanaman["jumlah_daun"],
+                tanaman["status"]
+            )
+
+        return {
+            "jumlah_tanaman_terdeteksi": len(plants),
+            "tanaman": plants,
+            "penyimpanan": penyimpanan
+        }
+
+    
+    except requests.exceptions.RequestException as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="YOLO berhasil diproses, tetapi komunikasi dengan Hostinger gagal."
+        ) from exc
+
     except Exception as exc:
-        # Hindari mengembalikan detail internal server ke pengguna API.
-        raise HTTPException(500, "Prediksi gagal. Periksa log server dan ketersediaan RAM.") from exc
+        raise HTTPException(
+            status_code=500,
+            detail="Pemrosesan atau penyimpanan gagal. Periksa log Railway."
+        ) from exc
+
