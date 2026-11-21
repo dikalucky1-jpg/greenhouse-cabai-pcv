@@ -44,6 +44,72 @@ def load_models():
     return plant_model, leaf_model
 
 
+def gambar_segmentasi(crop_bgr, leaf_result):
+    # Salin gambar tanaman
+    output = crop_bgr.copy()
+    overlay = crop_bgr.copy()
+
+    # Ambil bentuk daun dari hasil YOLO
+    polygons = (
+        [] if leaf_result.masks is None
+        else leaf_result.masks.xy
+    )
+
+    rng = np.random.default_rng(123)
+
+    # LANGKAH 1: Berikan warna pada daun
+    for polygon in polygons:
+        if len(polygon) < 3:
+            continue
+
+        pts = np.round(polygon).astype(np.int32)
+
+        color = tuple(
+            int(v) for v in rng.integers(60, 256, size=3)
+        )
+
+        cv2.fillPoly(overlay, [pts], color)
+
+    # LANGKAH 2: Gabungkan warna transparan
+    blended = cv2.addWeighted(
+        output, 0.60,
+        overlay, 0.40,
+        0
+    )
+
+    # LANGKAH 3: Gambar garis putih dan nomor merah
+    for idx, polygon in enumerate(polygons, start=1):
+        if len(polygon) < 3:
+            continue
+
+        pts = np.round(polygon).astype(np.int32)
+
+        # Garis putih
+        cv2.polylines(
+            blended,
+            [pts],
+            True,
+            (255, 255, 255),
+            2
+        )
+
+        # Cari titik tengah daun
+        cx, cy = np.mean(pts, axis=0).astype(int)
+
+        # Nomor merah
+        cv2.putText(
+            blended,
+            str(idx),
+            (int(cx), int(cy)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 0, 255),
+            2,
+            cv2.LINE_AA
+        )
+
+    return blended
+
 @app.get("/")
 def home():
     return {"service": "greenhouse-cabai-pcv", "status": "online", "endpoint": "POST /predict"}
@@ -111,6 +177,10 @@ async def predict(request: Request):
         detection = plant_model.predict(source=image, conf=PLANT_CONF, imgsz=IMAGE_SIZE,
                                         device="cpu", verbose=False)[0]
         plants = []
+        
+        # Satu gambar untuk seluruh tanaman
+        foto_segmentasi_gabungan = image.copy()
+        
         if detection.boxes is not None:
             for idx, box in enumerate(detection.boxes, start=1):
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
@@ -128,6 +198,25 @@ async def predict(request: Request):
                                                  device="cpu", verbose=False)[0]
                 polygons = [] if leaf_result.masks is None else leaf_result.masks.xy
                 count = len(polygons)
+                                
+                # Buat segmentasi untuk tanaman ini
+                foto_segmentasi = gambar_segmentasi(
+                    crop,
+                    leaf_result
+                )
+                
+                # Tentukan posisi crop pada foto asli
+                crop_x1 = max(0, x1 - mx)
+                crop_y1 = max(0, y1 - my)
+                crop_x2 = min(width, x2 + mx)
+                crop_y2 = min(height, y2 + my)
+                
+                # Tempel hasil segmentasi ke foto gabungan
+                foto_segmentasi_gabungan[
+                    crop_y1:crop_y2,
+                    crop_x1:crop_x2
+                ] = foto_segmentasi
+                
                 plants.append({
                     "tanaman_ke": idx,
                     "confidence_tanaman": round(float(box.conf[0].cpu()), 4),
@@ -136,7 +225,19 @@ async def predict(request: Request):
                     "box_xyxy": [x1, y1, x2, y2]
                 })
         
-        # Simpan hasil untuk satu tanaman per foto
+        # Ubah foto segmentasi gabungan menjadi JPEG
+        berhasil_segmentasi, jpeg_segmentasi = cv2.imencode(
+            ".jpg",
+            foto_segmentasi_gabungan,
+            [cv2.IMWRITE_JPEG_QUALITY, 85]
+        )
+
+        if not berhasil_segmentasi:
+            raise RuntimeError("Gagal membuat JPEG segmentasi")
+
+        foto_segmentasi_bytes = jpeg_segmentasi.tobytes()
+
+        # Status awal penyimpanan
         penyimpanan = {
             "success": False,
             "message": "Tanaman tidak terdeteksi"
@@ -144,7 +245,6 @@ async def predict(request: Request):
 
         if len(plants) > 0:
             tanaman = plants[0]
-
 
             # Gunakan JPEG asli jika input berupa JPEG
             content_type = request.headers.get(
@@ -170,7 +270,6 @@ async def predict(request: Request):
                 tanaman["jumlah_daun"],
                 tanaman["status"]
             )
-
         return {
             "success": penyimpanan.get("success") is True,
             "saved_to_hostinger": penyimpanan.get("success") is True,
