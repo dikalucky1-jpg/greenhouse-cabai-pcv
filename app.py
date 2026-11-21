@@ -125,11 +125,21 @@ def simpan_ke_hostinger(foto, foto_segmentasi, plants):
     if not plants:
         raise ValueError("Tidak ada tanaman untuk disimpan")
 
+
     import json
 
     tanaman_utama = plants[0]
 
+    print(
+        "DEBUG PENGIRIMAN:",
+        "jumlah_tanaman =", len(plants),
+        "ukuran_foto_asli =", len(foto),
+        "ukuran_segmentasi =", len(foto_segmentasi),
+        flush=True
+    )
+
     response = requests.post(
+
         HOSTINGER_URL,
         headers={
             "X-API-Key": HOSTINGER_API_TOKEN
