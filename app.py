@@ -85,9 +85,6 @@ def simpan_ke_hostinger(foto, jumlah_daun, status):
 
     response.raise_for_status()
 
-    
-    response.raise_for_status()
-
     hasil = response.json()
 
     if not hasil.get("success"):
@@ -174,14 +171,13 @@ async def predict(request: Request):
                 tanaman["status"]
             )
 
-
         return {
+            "success": penyimpanan.get("success") is True,
+            "saved_to_hostinger": penyimpanan.get("success") is True,
             "jumlah_tanaman_terdeteksi": len(plants),
             "tanaman": plants,
             "penyimpanan": penyimpanan
-        }
-
-    
+        }    
     except requests.exceptions.RequestException as exc:
         raise HTTPException(
             status_code=502,
