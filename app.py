@@ -119,30 +119,27 @@ def home():
         "versi": "APP_PY_TERBARU"
     }
 
+
 def simpan_ke_hostinger(foto, foto_segmentasi, plants):
-    if not HOSTINGER_API_TOKEN:
-        raise RuntimeError(
-            "HOSTINGER_API_TOKEN belum dikonfigurasi"
-        )
-
-    if not plants:
-        raise ValueError("Tidak ada tanaman untuk disimpan")
-
-
     import json
 
-    tanaman_utama = plants[0]
+    if not HOSTINGER_API_TOKEN:
+        raise RuntimeError("Token Hostinger belum diatur")
+
+    if not plants:
+        raise ValueError("Tidak ada tanaman yang terdeteksi")
+
+    if not foto_segmentasi:
+        raise ValueError("Foto segmentasi kosong")
 
     print(
-        "DEBUG PENGIRIMAN:",
-        "jumlah_tanaman =", len(plants),
-        "ukuran_foto_asli =", len(foto),
-        "ukuran_segmentasi =", len(foto_segmentasi),
+        "DEBUG KIRIM:",
+        "tanaman =", len(plants),
+        "foto_segmentasi =", len(foto_segmentasi),
         flush=True
     )
 
     response = requests.post(
-
         HOSTINGER_URL,
         headers={
             "X-API-Key": HOSTINGER_API_TOKEN
@@ -160,35 +157,28 @@ def simpan_ke_hostinger(foto, foto_segmentasi, plants):
             )
         },
         data={
-            "jumlah_daun": str(
-                tanaman_utama["jumlah_daun"]
-            ),
-            "status": tanaman_utama["status"],
+            "jumlah_daun": str(plants[0]["jumlah_daun"]),
+            "status": plants[0]["status"],
             "tanaman": json.dumps(plants)
         },
-        timeout=30
+        timeout=60
     )
 
-    print(
-        "HOSTINGER STATUS:",
-        response.status_code,
-        flush=True
-    )
-
-    print(
-        "HOSTINGER RESPONSE:",
-        response.text[:500],
-        flush=True
-    )
+    print("HOSTINGER STATUS:", response.status_code, flush=True)
+    print("HOSTINGER RESPONSE:", response.text[:1000], flush=True)
 
     response.raise_for_status()
 
     hasil = response.json()
 
     if not hasil.get("success"):
-        raise RuntimeError(
-            "Hostinger gagal menyimpan data"
-        )
+        raise RuntimeError("Hostinger gagal menyimpan data")
+
+    if not hasil.get("foto_segmentasi_tersimpan"):
+        raise RuntimeError("Foto segmentasi belum tersimpan")
+
+    if hasil.get("jumlah_tanaman") != len(plants):
+        raise RuntimeError("Jumlah tanaman tersimpan tidak sesuai")
 
     return hasil
 
