@@ -115,11 +115,19 @@ def home():
     return {"service": "greenhouse-cabai-pcv", "status": "online", "endpoint": "POST /predict"}
 
 
-def simpan_ke_hostinger(foto, jumlah_daun, status):
+
+def simpan_ke_hostinger(foto, foto_segmentasi, plants):
     if not HOSTINGER_API_TOKEN:
         raise RuntimeError(
             "HOSTINGER_API_TOKEN belum dikonfigurasi"
         )
+
+    if not plants:
+        raise ValueError("Tidak ada tanaman untuk disimpan")
+
+    import json
+
+    tanaman_utama = plants[0]
 
     response = requests.post(
         HOSTINGER_URL,
@@ -127,15 +135,26 @@ def simpan_ke_hostinger(foto, jumlah_daun, status):
             "X-API-Key": HOSTINGER_API_TOKEN
         },
         files={
-            "foto": ("cabai.jpg", foto, "image/jpeg")
+            "foto": (
+                "cabai_asli.jpg",
+                foto,
+                "image/jpeg"
+            ),
+            "foto_segmentasi": (
+                "cabai_segmentasi.jpg",
+                foto_segmentasi,
+                "image/jpeg"
+            )
         },
         data={
-            "jumlah_daun": str(jumlah_daun),
-            "status": status
+            "jumlah_daun": str(
+                tanaman_utama["jumlah_daun"]
+            ),
+            "status": tanaman_utama["status"],
+            "tanaman": json.dumps(plants)
         },
         timeout=30
     )
-
 
     print(
         "HOSTINGER STATUS:",
@@ -154,10 +173,11 @@ def simpan_ke_hostinger(foto, jumlah_daun, status):
     hasil = response.json()
 
     if not hasil.get("success"):
-        raise RuntimeError("Hostinger gagal menyimpan data")
+        raise RuntimeError(
+            "Hostinger gagal menyimpan data"
+        )
 
     return hasil
-
 
 @app.post("/predict")
 async def predict(request: Request):
@@ -265,11 +285,13 @@ async def predict(request: Request):
 
                 foto_jpeg = jpeg.tobytes()
 
+
             penyimpanan = simpan_ke_hostinger(
                 foto_jpeg,
-                tanaman["jumlah_daun"],
-                tanaman["status"]
+                foto_segmentasi_bytes,
+                plants
             )
+
         return {
             "success": penyimpanan.get("success") is True,
             "saved_to_hostinger": penyimpanan.get("success") is True,
