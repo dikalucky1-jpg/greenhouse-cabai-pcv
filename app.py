@@ -112,9 +112,12 @@ def gambar_segmentasi(crop_bgr, leaf_result):
 
 @app.get("/")
 def home():
-    return {"service": "greenhouse-cabai-pcv", "status": "online", "endpoint": "POST /predict"}
-
-
+    return {
+        "service": "greenhouse-cabai-pcv",
+        "status": "online",
+        "endpoint": "POST /predict",
+        "versi": "APP_PY_TERBARU"
+    }
 
 def simpan_ke_hostinger(foto, foto_segmentasi, plants):
     if not HOSTINGER_API_TOKEN:
