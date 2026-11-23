@@ -119,8 +119,13 @@ def home():
         "versi": "APP_PY_TERBARU"
     }
 
-
-def simpan_ke_hostinger(foto, foto_segmentasi, plants):
+def simpan_ke_hostinger(
+    foto,
+    foto_segmentasi,
+    plants,
+    jenis_foto="otomatis",
+    id_perintah=0
+):
     import json
 
     if not HOSTINGER_API_TOKEN:
@@ -159,7 +164,11 @@ def simpan_ke_hostinger(foto, foto_segmentasi, plants):
         data={
             "jumlah_daun": str(plants[0]["jumlah_daun"]),
             "status": plants[0]["status"],
-            "tanaman": json.dumps(plants)
+            "tanaman": json.dumps(plants),
+        
+            # Informasi foto dari ESP32-CAM
+            "jenis_foto": jenis_foto,
+            "id_perintah": str(id_perintah)
         },
         timeout=60
     )
@@ -184,6 +193,48 @@ def simpan_ke_hostinger(foto, foto_segmentasi, plants):
 
 @app.post("/predict")
 async def predict(request: Request):
+    # Membaca informasi foto dari ESP32-CAM
+    jenis_foto = request.headers.get(
+        "X-Jenis-Foto", ""
+    ).strip().lower()
+
+    id_perintah_raw = request.headers.get(
+        "X-ID-Perintah", "0"
+    ).strip()
+
+    # Validasi jenis foto
+    if jenis_foto not in ("otomatis", "manual"):
+        raise HTTPException(
+            status_code=400,
+            detail="Jenis foto harus otomatis atau manual"
+        )
+
+    # Validasi ID perintah
+    try:
+        id_perintah = int(id_perintah_raw)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="ID perintah harus berupa angka"
+        )
+
+    if jenis_foto == "manual" and id_perintah <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Foto manual wajib memiliki ID perintah"
+        )
+
+    if jenis_foto == "otomatis" and id_perintah != 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Foto otomatis harus menggunakan ID 0"
+        )
+
+    print(
+        f"[FOTO] Jenis: {jenis_foto}, ID: {id_perintah}",
+        flush=True
+    )
+    
     # Kirim body sebagai JPEG mentah (Content-Type: image/jpeg).
     if request.headers.get("content-type", "").split(";")[0].strip() not in ("image/jpeg", "image/png"):
         raise HTTPException(415, "Gunakan Content-Type: image/jpeg atau image/png")
@@ -292,7 +343,9 @@ async def predict(request: Request):
             penyimpanan = simpan_ke_hostinger(
                 foto_jpeg,
                 foto_segmentasi_bytes,
-                plants
+                plants,
+                jenis_foto,
+                id_perintah
             )
 
         return {
