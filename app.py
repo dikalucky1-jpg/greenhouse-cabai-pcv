@@ -123,8 +123,8 @@ def simpan_ke_hostinger(
     foto,
     foto_segmentasi,
     plants,
-    jenis_foto="otomatis",
-    id_perintah=0
+    jenis_foto,
+    id_perintah
 ):
     import json
 
@@ -218,16 +218,10 @@ async def predict(request: Request):
             detail="ID perintah harus berupa angka"
         )
 
-    if jenis_foto == "manual" and id_perintah <= 0:
+    if id_perintah <= 0:
         raise HTTPException(
             status_code=400,
-            detail="Foto manual wajib memiliki ID perintah"
-        )
-
-    if jenis_foto == "otomatis" and id_perintah != 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Foto otomatis harus menggunakan ID 0"
+            detail="Foto wajib memiliki ID pekerjaan positif"
         )
 
     print(
