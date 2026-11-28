@@ -25,12 +25,9 @@ HOSTINGER_URL = os.getenv(
 HOSTINGER_API_TOKEN = os.getenv("HOSTINGER_API_TOKEN", "")
 
 def readiness_status(n_leaves: int) -> str:
-    # Kriteria operasional awal dari notebook; bukan diagnosis agronomis.
-    if 4 <= n_leaves <= 6:
-        return "Siap (4-6 daun)"
-    if n_leaves < 4:
-        return "Belum siap (<4 daun)"
-    return "Perlu pemeriksaan (>6 daun)"
+    if n_leaves >= 6:
+        return "Siap panen"
+    return "Belum siap panen"
 
 
 @lru_cache(maxsize=1)
@@ -292,7 +289,42 @@ async def predict(request: Request):
                     "status": readiness_status(count),
                     "box_xyxy": [x1, y1, x2, y2]
                 })
-        
+
+        # Gambar bounding box seluruh tanaman
+        for tanaman in plants:
+            bx1, by1, bx2, by2 = tanaman["box_xyxy"]
+            jumlah_daun = tanaman["jumlah_daun"]
+            nomor = tanaman["tanaman_ke"]
+
+            # Warna berdasarkan kesiapan panen (BGR)
+            if jumlah_daun >= 6:
+                warna = (0, 180, 0)
+            else:
+                warna = (0, 165, 255)
+
+            # Bounding box tanaman
+            cv2.rectangle(
+                foto_segmentasi_gabungan,
+                (bx1, by1),
+                (bx2, by2),
+                warna,
+                3
+            )
+
+            # Label tanaman dan jumlah daun
+            label = f"Tanaman {nomor} | {jumlah_daun} daun"
+
+            cv2.putText(
+                foto_segmentasi_gabungan,
+                label,
+                (bx1, max(25, by1 - 10)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                warna,
+                2,
+                cv2.LINE_AA
+            )
+
         # Ubah foto segmentasi gabungan menjadi JPEG
         berhasil_segmentasi, jpeg_segmentasi = cv2.imencode(
             ".jpg",
